@@ -1,0 +1,8 @@
+.classpath
+.settings/
+.project
+build.sh
+dependency-reduced-pom.xml
+.vscode/
+target/
+bin/
