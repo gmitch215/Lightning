@@ -127,15 +127,7 @@ public class Lightning extends JavaPlugin {
 
             return arr;
         });
-        registerParameter(char[].class, s -> {
-            char[] arr = new char[s.split("%20").length];
-
-            for (int i = 0; i < s.split("%20").length; i++) {
-                arr[i] = s.split("%20")[i].charAt(0);
-            }
-
-            return arr;
-        });
+        registerParameter(char[].class, s -> { return s.toCharArray(); });
         registerParameter(double[].class, s -> {
             double[] arr = new double[s.split("%20").length];
 
@@ -161,7 +153,7 @@ public class Lightning extends JavaPlugin {
         registerParameter(List.class, s -> { return Arrays.asList(s.split("%20")); });
         registerParameter(Map.class, s -> {
             String ds = s.replace("(", "").replace(")", "");
-            Map<String, String> data = new HashMap<>();
+                Map<String, String> data = new HashMap<>();
 
             for (String entry : ds.split(",")) {
                 data.put(entry.split("-")[0], entry.split("-")[1]);
@@ -171,7 +163,13 @@ public class Lightning extends JavaPlugin {
         });
 
         registerParameter(OfflinePlayer.class, s -> { return Bukkit.getOfflinePlayer(UUID.fromString(s)); });
-        registerParameter(Player.class, s -> { return Bukkit.getPlayer(s); });
+        registerParameter(Player.class, s -> {
+            try {
+                return Bukkit.getPlayer(UUID.fromString(s));
+            } catch (IllegalArgumentException e) {
+                return Bukkit.getPlayer(s);
+            }
+        });
         registerParameter(World.class, s -> { return Bukkit.getWorld(s); });
         registerParameter(Material.class, s -> { return Material.matchMaterial(s.toUpperCase()); });
         registerParameter(CommandSender.class, s -> { return Bukkit.getPlayer(s); });
@@ -181,7 +179,7 @@ public class Lightning extends JavaPlugin {
             Map<String, String> data = new HashMap<>();
 
             for (String entry : ds.split(",")) {
-                data.put(entry.split("-")[0], entry.split("-")[1]);
+                data.put(entry.split("\\*")[0], entry.split("\\*")[1]);
             }
             
             World w = Bukkit.getWorld(data.get("world"));
@@ -203,7 +201,7 @@ public class Lightning extends JavaPlugin {
             Map<String, String> data = new HashMap<>();
 
             for (String entry : ds.split(",")) {
-                data.put(entry.split("-")[0], entry.split("-")[1]);
+                data.put(entry.split("\\*")[0], entry.split("\\*")[1]);
             }
 
             String namespace = data.get("namespace");
