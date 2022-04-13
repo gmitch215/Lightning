@@ -1,0 +1,6 @@
+name: Lightning
+main: me.gamercoder215.lightning.Lightning
+description: ${project.description}
+version: ${spigot.pluginversion}
+api-version: ${spigot.apiversion}
+author: GamerCoder215

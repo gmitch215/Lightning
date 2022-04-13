@@ -1,0 +1,10 @@
+# ${build.finalName}
+#
+# Created by GamerCoder215
+# 
+#
+
+# Port on which the web server will be hosted
+# Set to "SERVER" to use the port set in server.properties 
+port: SERVER
+

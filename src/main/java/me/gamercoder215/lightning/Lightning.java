@@ -218,16 +218,14 @@ public class Lightning extends JavaPlugin {
         // getLogger().info("Registered Base Methods");
     }
 
-    private static void startServer() {
+    private void startServer() {
         try {
-            // int port = getConfig().isString("port") ? Bukkit.getPort() : getConfig().getInt("port");
-            int port = 25565;
+            int port = getConfig().isString("port") ? Bukkit.getPort() : getConfig().getInt("port");
 
             server = HttpServer.create(new InetSocketAddress("localhost", port), 0);
             server.createContext("/", new HTTPHandler());   
 
             server.start();
-            // getLogger().info("Started Server on port " + port);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -239,11 +237,6 @@ public class Lightning extends JavaPlugin {
      */
     public static HttpServer getHTTPServer() {
         return server;
-    }
-
-    public static void main(String[] args) {
-        registerBaseMethods();
-        startServer();
     }
 
     private void loadConfiguration() {
