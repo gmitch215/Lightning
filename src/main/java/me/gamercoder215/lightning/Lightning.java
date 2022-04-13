@@ -17,6 +17,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
@@ -77,8 +78,8 @@ public class Lightning extends JavaPlugin {
         handler.registerBrigadier();
     }
 
-    private static void registerBaseMethods() {
-        // getLogger().info("Registering Parameters...");
+    private void registerBaseMethods() {
+        getLogger().info("Registering Parameters...");
 
         registerParameter(int.class, s -> { return Integer.parseInt(s); });
         registerParameter(boolean.class, s -> { return Boolean.parseBoolean(s); });
@@ -88,6 +89,7 @@ public class Lightning extends JavaPlugin {
         registerParameter(byte.class, s -> { return Byte.parseByte(s); });
         registerParameter(short.class, s -> { return Short.parseShort(s); });
         registerParameter(char.class, s -> { return s.charAt(0); });
+
 
         registerParameter(boolean[].class, s -> {
             boolean[] arr = new boolean[s.split("%20").length];
@@ -214,8 +216,23 @@ public class Lightning extends JavaPlugin {
             }
         }); 
         registerParameter(Plugin.class, s -> { return Bukkit.getPluginManager().getPlugin(s); });
+        registerParameter(Block.class, s -> {
+            String ds = s.replace("(", "").replace(")", "");
+            Map<String, String> data = new HashMap<>();
 
-        // getLogger().info("Registered Base Methods");
+            for (String entry : ds.split(",")) {
+                data.put(entry.split("-")[0], entry.split("-")[1]);
+            }
+            
+            World w = Bukkit.getWorld(data.get("world"));
+            int x = Integer.parseInt("x");
+            int y = Integer.parseInt("y");
+            int z = Integer.parseInt("z");
+
+            return new Location(w, x, y, z).getBlock();
+        });
+
+        getLogger().info("Registered Base Methods");
     }
 
     private void startServer() {
