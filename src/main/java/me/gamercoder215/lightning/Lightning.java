@@ -1,7 +1,15 @@
 package me.gamercoder215.lightning;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpClient.Version;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -9,6 +17,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 
+import javax.annotation.Nonnull;
+
+import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpServer;
 
 import org.bukkit.Bukkit;
@@ -19,20 +30,87 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.serialization.ConfigurationSerializable;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.SpawnCategory;
+import org.bukkit.event.Event;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import revxrsal.commands.bukkit.BukkitCommandHandler;
-
-public class Lightning extends JavaPlugin {
+public class Lightning extends JavaPlugin implements Listener {
 
     protected static Map<Class<?>, Function<String, ?>> registeredParse = new HashMap<>();
+    protected static List<URI> eventListeners;
 
     private static HttpServer server;
     private static BukkitCommandHandler handler;
+    private static final Gson gson = new Gson();
+
+    protected static final HttpClient client = HttpClient.newBuilder().version(Version.HTTP_2).build();
+
+    public void onEvent(Event e) {
+        try {
+            for (URI uri : eventListeners) {
+                HttpRequest req = HttpRequest.newBuilder(uri)
+                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(new EventInfo(e))))
+                .setHeader("User-Agent", "Java 17 Lightning HttpClient")
+                .setHeader("Content-Type", "application/json")
+                .build();
+
+                client.send(req, HttpResponse.BodyHandlers.ofString());
+            }
+        } catch (Exception err) {
+            err.printStackTrace();
+        }
+    }
+
+    private static Object serializeObject(Object obj) {
+        if (obj instanceof Enum<?> enumerical) {
+            return enumerical.name();
+        } else if (obj instanceof ConfigurationSerializable serialize) {
+            return serialize.serialize();
+        } else if (obj instanceof String s) return s;
+        else return obj.toString();
+    }
+
+    protected static final class EventInfo {
+
+        public final String name;
+        public final String full_name;
+        public final Map<String, Object> event_data;
+
+        private EventInfo(Event e) {
+            this.name = e.getClass().getSimpleName();
+            this.full_name = e.getClass().getName();
+
+            Map<String, Object> data = new HashMap<>();
+            
+            for (Field f : e.getClass().getDeclaredFields()) {
+                f.setAccessible(true);
+                Map<String, Object> fieldData = new HashMap<>();
+
+                fieldData.put("type", f.getType().getName());
+                try {
+                    fieldData.put("value", serializeObject(f.get(e)));
+                } catch (Exception err) {
+                    err.printStackTrace();
+                }
+
+                data.put(f.getName(), fieldData);
+            }
+
+            this.event_data = data;
+        }
+    }
 
     /**
      * Fetch all of the registered parameters.
@@ -40,6 +118,52 @@ public class Lightning extends JavaPlugin {
      */
     public static Map<Class<?>, Function<String, ?>> getRegistered() {
         return registeredParse;
+    }
+
+    /**
+     * Removes an Event Listener from the registered URIs.
+     * @param uri URI to remove
+     */
+    public static void removeEventListener(URI uri) {
+        eventListeners.remove(uri);
+    }
+
+    /**
+     * Removes a Event Listener from the registered URIs.
+     * @param url URL to remove
+     * @throws IllegalArgumentException if URL is invalid
+     * @see #removeEventListener(URI)
+     */
+    public static void removeEventListener(@Nonnull String url) throws IllegalArgumentException {
+        removeEventListener(URI.create(url));
+    }
+
+    /**
+     * Get the list of all registered event listeners.
+     * @return List of event listeners 
+     */
+    public static List<URI> getEventListeners() {
+        return eventListeners;
+    }
+
+    /**
+     * Adds this URL as an event listener.
+     * @param url URL to add
+     * @throws IllegalArgumentException if url is invalid
+     * @see {@link #addEventListener(URI)}
+     */
+    public static void addEventListener(String url) throws IllegalArgumentException {
+        addEventListener(URI.create(url));
+    }
+
+    /**
+     * Adds this URI as an event lsitener.
+     * <p>
+     * When an event happens, a POST request will be sent to this URI with the event information. 
+     * @param uri URI to add
+     */
+    public static void addEventListener(URI uri) {
+        eventListeners.add(uri);
     }
 
     /**
@@ -69,11 +193,27 @@ public class Lightning extends JavaPlugin {
         return (T) registeredParse.get(clazz).apply(input);
     }
 
+    public static boolean isOnline() {
+        Lightning plugin = JavaPlugin.getPlugin(Lightning.class);
+        int port = plugin.getConfig().isString("port") ? Bukkit.getPort() : plugin.getConfig().getInt("port");
+
+        try {
+            Socket socket = new Socket();
+            socket.connect(new InetSocketAddress("localhost", port), 10);
+            socket.close();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void setupLamp() {
         getLogger().info("Loading Commands...");
         handler = BukkitCommandHandler.create(this);
 
-        
+        handler.registerValueResolver(URI.class, ctx -> URI.create(ctx.popForParameter()));
+
+        handler.register(new Commands(this));        
 
         handler.registerBrigadier();
     }
@@ -90,58 +230,57 @@ public class Lightning extends JavaPlugin {
         registerParameter(short.class, s -> { return Short.parseShort(s); });
         registerParameter(char.class, s -> { return s.charAt(0); });
 
-
         registerParameter(boolean[].class, s -> {
-            boolean[] arr = new boolean[s.split("%20").length];
+            boolean[] arr = new boolean[s.split(" ").length];
 
-            for (int i = 0; i < s.split("%20").length; i++) {
-                arr[i] = Boolean.parseBoolean(s.split("%20")[i]);
+            for (int i = 0; i < s.split(" ").length; i++) {
+                arr[i] = Boolean.parseBoolean(s.split(" ")[i]);
             }
 
             return arr;
         });
         registerParameter(int[].class, s -> {
-            int[] arr = new int[s.split("%20").length];
+            int[] arr = new int[s.split(" ").length];
 
-            for (int i = 0; i < s.split("%20").length; i++) {
-                arr[i] = Integer.parseInt(s.split("%20")[i]);
+            for (int i = 0; i < s.split(" ").length; i++) {
+                arr[i] = Integer.parseInt(s.split(" ")[i]);
             }
 
             return arr;
         });
         registerParameter(byte[].class, s -> {
-            byte[] arr = new byte[s.split("%20").length];
+            byte[] arr = new byte[s.split(" ").length];
 
-            for (int i = 0; i < s.split("%20").length; i++) {
-                arr[i] = Byte.parseByte(s.split("%20")[i]);
+            for (int i = 0; i < s.split(" ").length; i++) {
+                arr[i] = Byte.parseByte(s.split(" ")[i]);
             }
 
             return arr;
         });
         registerParameter(short[].class, s -> {
-            short[] arr = new short[s.split("%20").length];
+            short[] arr = new short[s.split(" ").length];
 
-            for (int i = 0; i < s.split("%20").length; i++) {
-                arr[i] = Short.parseShort(s.split("%20")[i]);
+            for (int i = 0; i < s.split(" ").length; i++) {
+                arr[i] = Short.parseShort(s.split(" ")[i]);
             }
 
             return arr;
         });
         registerParameter(char[].class, s -> { return s.toCharArray(); });
         registerParameter(double[].class, s -> {
-            double[] arr = new double[s.split("%20").length];
+            double[] arr = new double[s.split(" ").length];
 
-            for (int i = 0; i < s.split("%20").length; i++) {
-                arr[i] = Double.parseDouble(s.split("%20")[i]);
+            for (int i = 0; i < s.split(" ").length; i++) {
+                arr[i] = Double.parseDouble(s.split(" ")[i]);
             }
 
             return arr;
         });
         registerParameter(float[].class, s -> {
-            float[] arr = new float[s.split("%20").length];
+            float[] arr = new float[s.split(" ").length];
 
-            for (int i = 0; i < s.split("%20").length; i++) {
-                arr[i] = Float.parseFloat(s.split("%20")[i]);
+            for (int i = 0; i < s.split(" ").length; i++) {
+                arr[i] = Float.parseFloat(s.split(" ")[i]);
             }
 
             return arr;
@@ -149,11 +288,20 @@ public class Lightning extends JavaPlugin {
         
 
         registerParameter(String.class, s -> { return s; });
+        registerParameter(String[].class, s -> { return s.split(" "); });
+        registerParameter(Class.class, s -> { 
+            try {
+                return Class.forName(s);
+            } catch (Exception e) {
+                return null;
+            }
+        });
+
         registerParameter(UUID.class, s -> { return UUID.fromString(s); });
-        registerParameter(List.class, s -> { return Arrays.asList(s.split("%20")); });
+        registerParameter(List.class, s -> { return Arrays.asList(s.split(" ")); });
         registerParameter(Map.class, s -> {
             String ds = s.replace("(", "").replace(")", "");
-                Map<String, String> data = new HashMap<>();
+            Map<String, String> data = new HashMap<>();
 
             for (String entry : ds.split(",")) {
                 data.put(entry.split("-")[0], entry.split("-")[1]);
@@ -161,6 +309,23 @@ public class Lightning extends JavaPlugin {
 
             return data;
         });
+        registerParameter(Enum.class, s -> {
+            try {
+                @SuppressWarnings("rawtypes")
+                Class<? extends Enum> clazz = Class.forName(s.split(":")[0]).asSubclass(Enum.class);
+                String enumerial = s.split(":")[1].toUpperCase();
+            
+                if (!(clazz.isEnum())) return null;
+                
+                @SuppressWarnings("unchecked")
+                Enum<?> enumValue = Enum.valueOf(clazz, enumerial);
+                
+                return enumValue;
+            } catch (Exception e) {
+                return null;
+            }
+        });
+
 
         registerParameter(OfflinePlayer.class, s -> { return Bukkit.getOfflinePlayer(UUID.fromString(s)); });
         registerParameter(Player.class, s -> {
@@ -170,10 +335,27 @@ public class Lightning extends JavaPlugin {
                 return Bukkit.getPlayer(s);
             }
         });
+        registerParameter(Entity.class, s -> { return Bukkit.getEntity(UUID.fromString(s)); });
+        registerParameter(LivingEntity.class, s -> {
+            if (!(Bukkit.getEntity(UUID.fromString(s)) instanceof LivingEntity en)) {
+                return null;
+            }
+
+            return en;
+        });
+        registerParameter(ItemStack.class, s -> {
+            String ds = s.replace("(", "").replace(")", "");
+            Map<String, String> data = new HashMap<>();
+
+            for (String entry : ds.split(",")) {
+                data.put(entry.split("-")[0], entry.split("-")[1]);
+            }
+
+            return new ItemStack(Material.getMaterial(data.get("item")), data.containsKey("amount") ? Integer.parseInt(data.get("amount")) : 1);
+        });
+
         registerParameter(World.class, s -> { return Bukkit.getWorld(s); });
-        registerParameter(Material.class, s -> { return Material.matchMaterial(s.toUpperCase()); });
         registerParameter(CommandSender.class, s -> { return Bukkit.getPlayer(s); });
-        registerParameter(SpawnCategory.class, s -> { return SpawnCategory.valueOf(s.toUpperCase()); });
         registerParameter(Location.class, s -> {
             String ds = s.replace("(", "").replace(")", "");
             Map<String, String> data = new HashMap<>();
@@ -238,7 +420,7 @@ public class Lightning extends JavaPlugin {
             int port = getConfig().isString("port") ? Bukkit.getPort() : getConfig().getInt("port");
 
             server = HttpServer.create(new InetSocketAddress("localhost", port), 0);
-            server.createContext("/", new HTTPHandler());   
+            server.createContext("/", new HTTPHandler(this));   
 
             server.start();
         } catch (IOException e) {
@@ -262,7 +444,28 @@ public class Lightning extends JavaPlugin {
             config.set("port", "SERVER");
         }
 
+        if (!(config.isList("listeners"))) {
+            config.set("listeners", new ArrayList<String>());
+        }
+
+
+        if (!(config.isConfigurationSection("headers"))) {
+            config.createSection("headers");
+        }
+
+        ConfigurationSection headers = config.getConfigurationSection("headers");
+
+        if (!(headers.isString("Authorization"))) {
+            headers.set("Authorization", "NONE");
+        }
+
         saveConfig();
+
+        List<URI> eventListeners = new ArrayList<>();
+
+        for (String s : config.getStringList("listeners")) eventListeners.add(URI.create(s));
+
+        Lightning.eventListeners = eventListeners;
     }
 
     public void onEnable() {
@@ -272,7 +475,27 @@ public class Lightning extends JavaPlugin {
         registerBaseMethods();
         startServer();
 
+        getLogger().info("Loading listener...");
+
+        RegisteredListener registeredListener = new RegisteredListener(this, (listener, event) -> onEvent(event), EventPriority.NORMAL, this, false);
+        for (HandlerList handler : HandlerList.getHandlerLists())
+            handler.register(registeredListener);
+
         getLogger().info("Done!");
+    }
+
+    public void onDisable() {
+        FileConfiguration config = getConfig();
+        
+        List<String> listeners = new ArrayList<>();
+
+        for (URI uri : eventListeners) {
+            listeners.add(uri.toString());
+        }
+
+        config.set("listeners", listeners);
+
+        getLogger().info("Finished Disabling Lightning");
     }
 
 }
