@@ -8,3 +8,14 @@
 # Set to "SERVER" to use the port set in server.properties 
 port: SERVER
 
+# Required HTTP Headers from client in order to send a valid response
+# Set to "NONE" to be ignored (not case-sensitive)
+# Headers are case-sensitive
+# Values that are not strings will be ignored
+# If a header has multiple values, the first one will be seen and nothing else
+headers:
+  Authorization: NONE
+
+
+listeners:
+  -
