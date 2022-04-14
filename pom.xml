@@ -14,6 +14,7 @@
 		<maven.compiler.release>17</maven.compiler.release>
 		<java.version>17</java.version>
 		<lamp.version>3.0.2</lamp.version>	
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <build>
@@ -57,13 +58,13 @@
         </dependency>
 	    <dependency>
 	        <groupId>com.github.Revxrsal.Lamp</groupId>
-	        <artifactId>bukkit</artifactId>
+	        <artifactId>common</artifactId>
 	        <version>${lamp.version}</version>
 			<scope>compile</scope>
 	    </dependency>
 	    <dependency>
 	        <groupId>com.github.Revxrsal.Lamp</groupId>
-	        <artifactId>common</artifactId>
+	        <artifactId>bukkit</artifactId>
 	        <version>${lamp.version}</version>
 			<scope>compile</scope>
 	    </dependency>
