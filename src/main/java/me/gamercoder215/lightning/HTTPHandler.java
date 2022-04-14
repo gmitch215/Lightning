@@ -6,6 +6,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -15,17 +18,26 @@ import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
+import org.bukkit.ChatColor;
+
 import me.gamercoder215.lightning.ClassInfo.FieldInfo;
 import me.gamercoder215.lightning.ClassInfo.MethodInfo;
 
 class HTTPHandler implements HttpHandler {
+
+    private final Lightning plugin;
+
+    public HTTPHandler(Lightning plugin) {
+        this.plugin = plugin;
+    }
 
     private static Gson gson = new Gson();
 
     private static record ErrRes(int code, String message) {};
 
     private static String RES_404 = gson.toJson(new ErrRes(404, "The requested object cannot be resolved."));
-    
+    private static String RES_403 = gson.toJson(new ErrRes(403, "Unauthorized"));
+
     private static String RES_400(String msg) {
         return gson.toJson(new ErrRes(400, msg));
     }
@@ -39,11 +51,67 @@ class HTTPHandler implements HttpHandler {
         OutputStream os = ex.getResponseBody();
         ex.getResponseHeaders().set("Content-Type", "application/json");
 
-        try {
-            Map<String, String> params = queryToMap(ex.getRequestURI().getQuery());
-            String path = ex.getRequestURI().getPath();
+        Map<String, String> headers = new HashMap<>();
 
-            if (path.startsWith("/class/")) {         
+        for (Map.Entry<String, Object> entry : plugin.getConfig().getConfigurationSection("headers").getValues(false).entrySet()) {
+            if (!(entry.getValue() instanceof String value)) continue;
+            if (value.equalsIgnoreCase("none")) continue;
+            
+            headers.put(entry.getKey(), value);
+        }
+
+        boolean authorized = true;
+
+        for (String key : ex.getRequestHeaders().keySet()) {
+            if (headers.get(key) == null || !(headers.get(key).equals(ex.getRequestHeaders().getFirst(key)))) {
+                authorized = false;
+                break;
+            }
+        }
+
+        if (!authorized) {
+            ex.sendResponseHeaders(403, RES_403.length());
+            os.write(RES_403.length());
+            os.close();
+        }
+        
+        try {
+            Map<String, String> params = queryToMap(URLEncoder.encode(ex.getRequestURI().getQuery(), Charset.forName("UTF-8")));
+            String path = URLDecoder.decode(ex.getRequestURI().getPath(), Charset.forName("UTF-8"));
+
+            if (path.startsWith("/addlistener/")) {
+                String url = path.split("/addlistener/")[1];
+
+                try {
+                    Lightning.addEventListener(URLDecoder.decode(url, Charset.forName("UTF-8")));
+                    String res = "{\"code\":200, \"message\": \"Successfully added listener\"}";
+
+                    ex.sendResponseHeaders(200, res.length());
+                    os.write(res.getBytes());
+                } catch (IllegalArgumentException e) {
+                    ex.sendResponseHeaders(400, RES_400("Invalid URL").length());
+                    os.write(RES_400("Invalid URL").length());
+                }
+                os.close();
+                return;
+            } else if (path.startsWith("/removelistener/")) {
+                String url = path.split("/removelistener/")[1];
+
+                try {
+                    if (!(url.startsWith("https://")) && !(url.startsWith("http://"))) url = "https://" + url;
+
+                    Lightning.removeEventListener(URLDecoder.decode(url, Charset.forName("UTF-8")));
+                    String res = "{\"code\":200, \"message\": \"Successfully removed listener\"}";
+
+                    ex.sendResponseHeaders(200, res.length());
+                    os.write(res.getBytes());
+                } catch (IllegalArgumentException e) {
+                    ex.sendResponseHeaders(400, RES_400("Invalid URL").length());
+                    os.write(RES_400("Invalid URL").length());
+                }
+                os.close();
+                return;
+            } else if (path.startsWith("/class/")) {         
                 String endpoint = path.split("/class/")[1];   
                 String clazzName = endpoint.replace('/', '.');
 
@@ -103,7 +171,8 @@ class HTTPHandler implements HttpHandler {
 
                     Method chosen = null;
                     List<Object> args = new ArrayList<>();
-                    
+                    boolean format = (params.containsKey("format") ? Boolean.parseBoolean(params.get("format")) : false);
+
                     for (Method m : possible) {
                         if (m.getParameterCount() != params.size() - 1) continue;
 
@@ -118,7 +187,9 @@ class HTTPHandler implements HttpHandler {
                                     Object obj = Lightning.parse(p.getType(), params.get("arg" + i));
                                     if (obj == null) throw new NullPointerException();
 
-                                    args.add(obj);
+                                    if (obj instanceof String s && format) {
+                                        args.add(ChatColor.translateAlternateColorCodes('&', s));
+                                    } else args.add(obj);
                                 } catch (IllegalArgumentException | NullPointerException e) {
                                     continue;
                                 }
@@ -212,7 +283,7 @@ class HTTPHandler implements HttpHandler {
             for (String param : query.split("&")) {
                 String[] entry = param.split("=");
                 if (entry.length > 1) {
-                    result.put(entry[0], entry[1]);
+                    result.put(entry[0], URLDecoder.decode(entry[1], Charset.forName("UTF-8")));
                 } else {
                     result.put(entry[0], "");
                 }
@@ -220,7 +291,7 @@ class HTTPHandler implements HttpHandler {
         } else {
             String[] entry = query.split("=");
             if (entry.length > 1) {
-                result.put(entry[0], entry[1]);
+                result.put(entry[0], URLDecoder.decode(entry[1], Charset.forName("UTF-8")));
             } else {
                 result.put(entry[0], "");
             }
