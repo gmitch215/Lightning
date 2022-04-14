@@ -57,6 +57,7 @@ final class ClassInfo {
         modifiers.put("transient", Modifier.isTransient(mod));
         modifiers.put("volatile", Modifier.isVolatile(mod));
         modifiers.put("visibility", getVisibility(clazz));
+        modifiers.put("native", Modifier.isNative(mod));
 
         this.modifiers = modifiers;
 
@@ -123,6 +124,7 @@ final class ClassInfo {
             modifiers.put("transient", Modifier.isTransient(mod));
             modifiers.put("volatile", Modifier.isVolatile(mod));
             modifiers.put("visibility", getVisibility(f));
+            modifiers.put("native", Modifier.isNative(mod));
 
             this.modifiers = modifiers;
 
@@ -222,6 +224,7 @@ final class ClassInfo {
             modifiers.put("transient", Modifier.isTransient(mod));
             modifiers.put("volatile", Modifier.isVolatile(mod));
             modifiers.put("visibility", getVisibility(m));
+            modifiers.put("native", Modifier.isNative(mod));
         
             this.modifiers = modifiers;
 
@@ -266,6 +269,7 @@ final class ClassInfo {
             modifiers.put("transient", Modifier.isTransient(mod));
             modifiers.put("volatile", Modifier.isVolatile(mod));
             modifiers.put("visibility", getVisibility(constr));
+            modifiers.put("native", Modifier.isNative(mod));
 
             this.modifiers = modifiers;
 
