@@ -1,5 +1,6 @@
 package me.gamercoder215.lightning;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,6 +42,32 @@ public class Commands {
     public void reloadSever(Player sender) {
         stopServer(sender);
         startServer(sender);
+    }
+
+    @Command({"addlistener", "lserver addlistener"})
+    @Description("Adds an event listener")
+    @Usage("/lserver addlistener <uri>")
+    @CommandPermission("lightning.server.listener")
+    public void addListener(Player sender, URI uri) {
+        if (Lightning.getEventListeners().contains(uri)) {
+            sender.sendMessage(ChatColor.RED + "URL already exists");
+            return;
+        }
+        Lightning.addEventListener(uri);
+        sender.sendMessage(ChatColor.GREEN + "Successfully added event listener to " + ChatColor.YELLOW + uri.toString());
+    }
+
+    @Command({"removelistener", "lserver removelistener"})
+    @Description("Adds an event listener")
+    @Usage("/lserver removelistener <uri>")
+    @CommandPermission("lightning.server.listener")
+    public void removeListener(Player sender, URI uri) {
+        if (!Lightning.getEventListeners().contains(uri)) {
+            sender.sendMessage(ChatColor.RED + "URL does not exist");
+            return;
+        }
+        Lightning.removeEventListener(uri);
+        sender.sendMessage(ChatColor.GREEN + "Successfully removed event listener from " + ChatColor.YELLOW + uri.toString());
     }
 
     @Command({"lserver", "lserver info", "lserverinfo"})
