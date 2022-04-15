@@ -4,23 +4,22 @@ description: ${project.description}
 version: ${spigot.pluginversion}
 api-version: ${spigot.apiversion}
 author: GamerCoder215
+commands:
+  lserver:
+    description: Lightning Server base command
+    aliases: [lightning, lightningserver, lightserver]
+  lserverinfo:
+    description: Lightning Server information
+    aliases: [lightninginfo, lightning-info, light-info]
 permissions:
   lightning.server:
     description: All server commands
     default: op
     children:
-      lightning.server.start: true
-      lightning.server.stop: true
       lightning.server.info: true
       lightning.server.listener: true
   lightning.server.listener:
     description: Add & Remove Event Listeners
-    default: op
-  lightning.server.start:
-    description: Start server
-    default: op
-  lightning.server.stop:
-    description: Stop server
     default: op
   lightning.server.info:
     description: Query server information

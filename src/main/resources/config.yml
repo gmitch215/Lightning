@@ -5,8 +5,7 @@
 #
 
 # Port on which the web server will be hosted
-# Set to "SERVER" to use the port set in server.properties 
-port: SERVER
+port: 30335
 
 # Required HTTP Headers from client in order to send a valid response
 # Set to "NONE" to be ignored (not case-sensitive)
