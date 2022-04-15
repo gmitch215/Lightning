@@ -14,11 +14,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.bukkit.ChatColor;
+
 import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-
-import org.bukkit.ChatColor;
 
 import me.gamercoder215.lightning.ClassInfo.FieldInfo;
 import me.gamercoder215.lightning.ClassInfo.MethodInfo;
@@ -79,7 +79,12 @@ class HTTPHandler implements HttpHandler {
             Map<String, String> params = queryToMap(URLEncoder.encode(ex.getRequestURI().getQuery(), Charset.forName("UTF-8")));
             String path = URLDecoder.decode(ex.getRequestURI().getPath(), Charset.forName("UTF-8"));
 
-            if (path.startsWith("/addlistener/")) {
+            if (path.equals("/")) {
+            	ex.sendResponseHeaders(200, "200 OK".length());
+            	os.write("200 OK".getBytes());
+            	os.close();
+            	return;
+            } else if (path.startsWith("/addlistener/")) {
                 String url = path.split("/addlistener/")[1];
 
                 try {
