@@ -9,6 +9,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.eclipse.jetty.server.Server;
 
 public class Commands implements CommandExecutor {
 
@@ -66,8 +67,10 @@ public class Commands implements CommandExecutor {
 		        FileConfiguration config = plugin.getConfig();
 		        List<String> info = new ArrayList<>();
 		        
-		        info.add("=== HttpServer Information ===");
+		        info.add("=== JettyServer Information ===");
 		        info.add("Server Address: <ip>:" + config.getInt("port"));
+		        info.add("State: " + Lightning.getWebServer().getState().toUpperCase());
+		        info.add("Version: " + Server.getVersion());
 		        info.add(" ");
 		        info.add("=== HttpClient Information ===");
 		        info.add("Version: " + Lightning.client.version().name());
