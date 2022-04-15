@@ -2,6 +2,10 @@ package me.gamercoder215.lightning;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -20,10 +24,12 @@ import java.util.function.Function;
 import javax.annotation.Nonnull;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
@@ -33,6 +39,7 @@ import org.bukkit.configuration.serialization.ConfigurationSerializable;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.SpawnCategory;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
@@ -41,20 +48,333 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.servlet.ServletHandler;
 
 import com.google.gson.Gson;
-import com.sun.net.httpserver.HttpServer;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import me.gamercoder215.lightning.ClassInfo.FieldInfo;
+import me.gamercoder215.lightning.ClassInfo.MethodInfo;
+import net.md_5.bungee.api.chat.BaseComponent;
+import net.md_5.bungee.api.chat.TextComponent;
 
 public class Lightning extends JavaPlugin implements Listener {
 
     protected static Map<Class<?>, Function<String, ?>> registeredParse = new HashMap<>();
     protected static List<URI> eventListeners;
 
-    private static HttpServer server;
+    private static Server server;
     private static final Gson gson = new Gson();
 
     protected static final HttpClient client = HttpClient.newBuilder().version(Version.HTTP_2).build();
+    
+    public final static class HTTPHandler extends HttpServlet {
+		private static final long serialVersionUID = 7291695377779784977L;
+		private static Gson gson = new Gson();
+		
+		public HTTPHandler() {};
+		
+        private static record ErrRes(int code, String message) {};
 
+        private static String RES_404 = gson.toJson(new ErrRes(404, "The requested object cannot be resolved."));
+        private static String RES_403 = gson.toJson(new ErrRes(403, "Unauthorized"));
+
+        private static String RES_400(String msg) {
+            return gson.toJson(new ErrRes(400, msg));
+        }
+
+        private static record ExceptionRes(int code, String exType, String message) {};
+
+        private static record OtherRes(int code, Object response) {};
+        
+        private static List<Method> getAllMethods(Class<?> clazz) {
+        	List<Method> methods = new ArrayList<>();
+        	
+        	methods.addAll(Arrays.asList(clazz.getDeclaredMethods()));
+        	if (clazz.getSuperclass() != null) {
+        		methods.addAll(getAllMethods(clazz.getSuperclass()));
+        	}
+        	
+        	return methods;
+        }
+        
+        @Override
+        public void doGet(HttpServletRequest req, HttpServletResponse res) throws IOException, ServletException {
+            res.setContentType("application/json");
+            
+            Map<String, String> headers = new HashMap<>();
+            
+            Lightning plugin = JavaPlugin.getPlugin(Lightning.class);
+            
+            for (Map.Entry<String, Object> entry : plugin.getConfig().getConfigurationSection("headers").getValues(false).entrySet()) {
+                if (!(entry.getValue() instanceof String value)) continue;
+                if (value.equalsIgnoreCase("none")) continue;
+                
+                headers.put(entry.getKey(), value);
+            }
+
+            boolean authorized = true;
+
+            for (String key : headers.keySet()) {
+            	if (req.getHeader(key) == null || !(req.getHeader(key).equals(headers.get(key)))) {
+            		authorized = false;
+            		break;
+            	}
+            }
+
+            if (!authorized) {
+            	res.setStatus(403);
+            	res.setContentLength(RES_403.length());
+                res.getWriter().println(RES_403);
+                return;
+            }
+            
+            try {
+                Map<String, String> params = queryToMap(req.getQueryString());
+                String path = req.getRequestURI();
+
+                if (path.equals("/")) {
+                	res.setStatus(200);
+                	res.setContentLength("200 OK".length());
+                	res.getWriter().println("200 OK");
+                	return;
+                } else if (path.startsWith("/addlistener/")) {
+                    String url = path.split("/addlistener/")[1];
+
+                    try {
+                        Lightning.addEventListener(url);
+                        String response = "{\"code\":200, \"message\": \"Successfully added listener\"}";
+
+                        res.setStatus(200);
+                        res.setContentLength(response.length());
+                        res.getWriter().println(response);
+                    } catch (IllegalArgumentException e) {
+                        res.setStatus(400);
+                        res.setContentLength(RES_400("Invalid URL").length());
+                        res.getWriter().println(RES_400("Invalid URL"));
+                    }
+                    return;
+                } else if (path.startsWith("/removelistener/")) {
+                    String url = path.split("/removelistener/")[1];
+
+                    try {
+                        if (!(url.startsWith("https://")) && !(url.startsWith("http://"))) url = "https://" + url;
+
+                        Lightning.removeEventListener(url);
+                        String response = "{\"code\":200, \"message\": \"Successfully removed listener\"}";
+
+                        res.setStatus(200);
+                        res.setContentLength(response.length());
+                        res.getWriter().println(response);
+                    } catch (IllegalArgumentException e) {
+                    	res.setStatus(400);
+                    	res.setContentLength(RES_400("Invalid URL").length());
+                        res.getWriter().println(RES_400("Invalid URL"));
+                    }
+                    return;
+                } else if (path.startsWith("/class/")) {         
+                    String endpoint = path.split("/class/")[1];   
+                    String clazzName = endpoint.replace('/', '.');
+
+                    Class<?> clazz = Class.forName(clazzName);
+
+                    if (params.containsKey("field")) {
+                        try {
+                            Field f = clazz.getDeclaredField(params.get("field"));
+                            
+                            String response = gson.toJson(new FieldInfo(f));
+                            res.setStatus(200);
+                            res.setContentLength(response.length());
+                            res.getWriter().println(response);
+                        } catch (NoSuchFieldException e) {
+                            res.setStatus(404);
+                            res.setContentLength(RES_404.length());
+                            res.getWriter().println(RES_404);
+                        }
+                        return;
+                    } else if (params.containsKey("method")) {
+                        try {
+                            Method m = clazz.getDeclaredMethod(params.get("method"));
+                            
+                            String response = gson.toJson(new MethodInfo(m));
+                            res.setStatus(200);
+                            res.setContentLength(response.length());
+                            res.getWriter().println(response);
+                        } catch (NoSuchMethodException e) {
+                            res.setStatus(404);
+                            res.setContentLength(RES_404.length());
+                            res.getWriter().println(RES_404);
+                        }
+                        return;
+                    } else {
+                        String response = gson.toJson(new ClassInfo(clazz));
+                        res.setStatus(200);
+                        res.setContentLength(response.length());
+                        res.getWriter().println(response);
+                    }
+                } else if (path.startsWith("/method/")) {
+                    String endpoint = path.split("/method/")[1];
+                    String clazzName = endpoint.replace('/', '.');
+
+                    Class<?> clazz = Class.forName(clazzName);
+
+                    if (!(params.containsKey("method"))) {
+                        res.setStatus(400);
+                        res.setContentLength(RES_400("Missing parameter method").length());
+                        res.getWriter().println(RES_400("Missing parameter method"));
+                        return;
+                    }
+
+                    String method = params.get("method");
+
+                    try {
+                        List<Method> possible = new ArrayList<>();
+                        
+                        for (Method m : getAllMethods(clazz)) if (m.getName().equals(method)) possible.add(m);
+                        if (possible.size() < 1) throw new NoSuchMethodException();
+
+                        Method chosen = null;
+                        List<Object> args = new ArrayList<>();
+                        
+                        for (Method m : possible) {
+                            if (m.getParameterCount() != params.keySet().stream().filter(s -> s.startsWith("arg")).toList().size()) continue;
+
+                            if (m.getParameterCount() > 0) {
+                                boolean continueLoop = true;
+
+                                for (int i = 0; i < m.getParameterCount(); i++) {
+                                    Parameter p = m.getParameters()[i];
+                                    if (!(Lightning.getRegistered().containsKey(p.getType()))) continue;
+
+                                    try {
+                                        Object obj = Lightning.parse(p.getType(), params.get("arg" + i));
+                                        if (obj == null) throw new NullPointerException();
+                                        
+                                        args.add(obj);
+                                    } catch (IllegalArgumentException | NullPointerException e) {
+                                        continue;
+                                    }
+                                    continueLoop = false;
+                                }
+
+                                if (continueLoop) continue;
+                                else {
+                                    chosen = m;
+                                    break;
+                                }
+                            } else {
+                                chosen = m;
+                                break;
+                            }
+                        }
+
+                        if (chosen == null) throw new NoSuchMethodException();
+
+                        Object inst = null;
+
+                        if (!(params.containsKey("instance")) && !(Modifier.isStatic(chosen.getModifiers()))) {
+                        	res.setStatus(400);
+                            res.setContentLength(RES_400("Missing parameter instance").length());
+                            res.getWriter().println(RES_400("Missing parameter instance"));
+                            return;
+                        }
+
+                        if (params.containsKey("instance")) {
+                            inst = Lightning.parse(chosen.getDeclaringClass(), params.get("instance"));
+                        }
+
+                        if (inst == null && !(Modifier.isStatic(chosen.getModifiers()))) {
+                        	res.setStatus(400);
+                            res.setContentLength(RES_400("Malformed parameter instance").length());
+                            res.getWriter().println(RES_400("Malformed parameter instance"));
+                            return;
+                        }
+
+                        try {
+                            chosen.setAccessible(true);
+                            Object responseO;
+                            if (Modifier.isStatic(chosen.getModifiers())) {
+                                if (args.size() == 0) {
+                                    responseO = chosen.invoke(null);
+                                } else {
+                                    responseO = chosen.invoke(null, args.toArray());
+                                }
+                            } else {
+                                if (args.size() == 0) {
+                                    responseO = chosen.invoke(inst);
+                                } else {
+                                    responseO = chosen.invoke(inst, args.toArray());
+                                }
+                            }
+                            String response = gson.toJson(new OtherRes(200, responseO));
+                            res.setStatus(200);
+                            res.setContentLength(response.length());
+                            res.getWriter().println(response);
+                        } catch (InvocationTargetException e) {
+                            String response = gson.toJson(new ExceptionRes(400, e.getCause().getClass().getName(), e.getCause().getMessage()));
+                        	res.setStatus(400);
+                            res.setContentLength(response.length());
+                            res.getWriter().println(response);
+                    	} catch (Exception e) {
+                            String response = gson.toJson(new ExceptionRes(400, e.getClass().getName(), e.getMessage()));
+                        	res.setStatus(400);
+                            res.setContentLength(response.length());
+                            res.getWriter().println(response);
+                            return;
+                            
+                        }
+                    } catch (NoSuchMethodException e) {
+                        String response = RES_400("No method " + method);
+                    	res.setStatus(400);
+                        res.setContentLength(response.length());
+                        res.getWriter().println(response);
+                        return;   
+                    }
+                } else {
+                	res.setStatus(404);
+                    res.setContentLength(RES_404.length());
+                    res.getWriter().println(RES_404);
+                }
+            } catch (Exception e) {
+            	e.printStackTrace();
+            	res.setStatus(404);
+                res.setContentLength(RES_404.length());
+                res.getWriter().println(RES_404);
+            }
+        }
+        
+        private static Map<String, String> queryToMap(String query) {
+            if(query == null) {
+                return new HashMap<>();
+            }
+            Map<String, String> result = new HashMap<>();
+
+            if (query.contains("&")) {
+                for (String param : query.split("&")) {
+                    String[] entry = param.split("=");
+                    if (entry.length > 1) {
+                        result.put(entry[0], entry[1]);
+                    } else {
+                        result.put(entry[0], "");
+                    }
+                }
+            } else {
+                String[] entry = query.split("=");
+                if (entry.length > 1) {
+                    result.put(entry[0], entry[1]);
+                } else {
+                    result.put(entry[0], "");
+                }
+            } 
+            return result;
+        }    
+    }
+    
     public void onEvent(Event e) {
         try {
             for (URI uri : eventListeners) {
@@ -226,64 +546,67 @@ public class Lightning extends JavaPlugin implements Listener {
         registerParameter(char.class, s -> { return s.charAt(0); });
 
         registerParameter(boolean[].class, s -> {
-            boolean[] arr = new boolean[s.split(" ").length];
+            boolean[] arr = new boolean[s.split("%20").length];
 
-            for (int i = 0; i < s.split(" ").length; i++) {
-                arr[i] = Boolean.parseBoolean(s.split(" ")[i]);
+            for (int i = 0; i < s.split("%20").length; i++) {
+                arr[i] = Boolean.parseBoolean(s.split("%20")[i]);
             }
 
             return arr;
         });
         registerParameter(int[].class, s -> {
-            int[] arr = new int[s.split(" ").length];
+            int[] arr = new int[s.split("%20").length];
 
-            for (int i = 0; i < s.split(" ").length; i++) {
-                arr[i] = Integer.parseInt(s.split(" ")[i]);
+            for (int i = 0; i < s.split("%20").length; i++) {
+                arr[i] = Integer.parseInt(s.split("%20")[i]);
             }
 
             return arr;
         });
         registerParameter(byte[].class, s -> {
-            byte[] arr = new byte[s.split(" ").length];
+            byte[] arr = new byte[s.split("%20").length];
 
-            for (int i = 0; i < s.split(" ").length; i++) {
-                arr[i] = Byte.parseByte(s.split(" ")[i]);
+            for (int i = 0; i < s.split("%20").length; i++) {
+                arr[i] = Byte.parseByte(s.split("%20")[i]);
             }
 
             return arr;
         });
         registerParameter(short[].class, s -> {
-            short[] arr = new short[s.split(" ").length];
+            short[] arr = new short[s.split("%20").length];
 
-            for (int i = 0; i < s.split(" ").length; i++) {
-                arr[i] = Short.parseShort(s.split(" ")[i]);
+            for (int i = 0; i < s.split("%20").length; i++) {
+                arr[i] = Short.parseShort(s.split("%20")[i]);
             }
 
             return arr;
         });
         registerParameter(char[].class, s -> { return s.toCharArray(); });
         registerParameter(double[].class, s -> {
-            double[] arr = new double[s.split(" ").length];
+            double[] arr = new double[s.split("%20").length];
 
-            for (int i = 0; i < s.split(" ").length; i++) {
-                arr[i] = Double.parseDouble(s.split(" ")[i]);
+            for (int i = 0; i < s.split("%20").length; i++) {
+                arr[i] = Double.parseDouble(s.split("%20")[i]);
             }
 
             return arr;
         });
         registerParameter(float[].class, s -> {
-            float[] arr = new float[s.split(" ").length];
+            float[] arr = new float[s.split("%20").length];
 
-            for (int i = 0; i < s.split(" ").length; i++) {
-                arr[i] = Float.parseFloat(s.split(" ")[i]);
+            for (int i = 0; i < s.split("%20").length; i++) {
+                arr[i] = Float.parseFloat(s.split("%20")[i]);
             }
 
             return arr;
         });
         
 
-        registerParameter(String.class, s -> { return s; });
-        registerParameter(String[].class, s -> { return s.split(" "); });
+        registerParameter(String.class, s -> {
+        	String newS = s.replace("%26", "&");
+        	return ChatColor.translateAlternateColorCodes('&', newS);
+        });
+        registerParameter(String[].class, s -> { return s.split("%20"); });
         registerParameter(Class.class, s -> { 
             try {
                 return Class.forName(s);
@@ -293,7 +616,7 @@ public class Lightning extends JavaPlugin implements Listener {
         });
 
         registerParameter(UUID.class, s -> { return UUID.fromString(s); });
-        registerParameter(List.class, s -> { return Arrays.asList(s.split(" ")); });
+        registerParameter(List.class, s -> { return Arrays.asList(s.split("%20")); });
         registerParameter(Map.class, s -> {
             String ds = s.replace("(", "").replace(")", "");
             Map<String, String> data = new HashMap<>();
@@ -304,23 +627,6 @@ public class Lightning extends JavaPlugin implements Listener {
 
             return data;
         });
-        registerParameter(Enum.class, s -> {
-            try {
-                @SuppressWarnings("rawtypes")
-                Class<? extends Enum> clazz = Class.forName(s.split(":")[0]).asSubclass(Enum.class);
-                String enumerial = s.split(":")[1].toUpperCase();
-            
-                if (!(clazz.isEnum())) return null;
-                
-                @SuppressWarnings("unchecked")
-                Enum<?> enumValue = Enum.valueOf(clazz, enumerial);
-                
-                return enumValue;
-            } catch (Exception e) {
-                return null;
-            }
-        });
-
 
         registerParameter(OfflinePlayer.class, s -> { return Bukkit.getOfflinePlayer(UUID.fromString(s)); });
         registerParameter(Player.class, s -> {
@@ -389,7 +695,7 @@ public class Lightning extends JavaPlugin implements Listener {
             } else {
                 return new NamespacedKey(Bukkit.getPluginManager().getPlugin(namespace), key);
             }
-        }); 
+        });
         registerParameter(Plugin.class, s -> { return Bukkit.getPluginManager().getPlugin(s); });
         registerParameter(Block.class, s -> {
             String ds = s.replace("(", "").replace(")", "");
@@ -406,6 +712,18 @@ public class Lightning extends JavaPlugin implements Listener {
 
             return new Location(w, x, y, z).getBlock();
         });
+        registerParameter(Material.class, s -> { return Material.getMaterial(s); });
+        registerParameter(Particle.class, s -> { try { return Particle.valueOf(s); } catch (IllegalArgumentException e) { return null; } });
+        registerParameter(SpawnCategory.class, s -> { try { return SpawnCategory.valueOf(s); } catch (IllegalArgumentException e) { return null; } });
+        
+        registerParameter(BaseComponent.class, s -> {
+        	String newS = s.replace("%26", "&");
+        	return new TextComponent(ChatColor.translateAlternateColorCodes('&', newS));
+        });
+        registerParameter(TextComponent.class, s -> {
+        	String newS = s.replace("%26", "&");
+        	return new TextComponent(ChatColor.translateAlternateColorCodes('&', newS));
+        });
 
         getLogger().info("Registered Base Methods");
     }
@@ -420,21 +738,26 @@ public class Lightning extends JavaPlugin implements Listener {
         try {
             int port = getConfig().getInt("port");
             
-            server = HttpServer.create(new InetSocketAddress("localhost", port), 0);
+            server = new Server();
+            ServerConnector connector = new ServerConnector(server);
+            connector.setPort(port);
+            server.addConnector(connector);
             
-            server.createContext("/", new HTTPHandler(this));
+            ServletHandler handler = new ServletHandler();
+            handler.addServletWithMapping(HTTPHandler.class, "/");
+            server.setHandler(handler);
 
             server.start();
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     /**
      * Get the HTTP Server that is hosting the server.
-     * @return HttpServer object
+     * @return Jetty Server object
      */
-    public static HttpServer getWebServer() {
+    public static Server getWebServer() {
         return server;
     }
 
@@ -499,7 +822,12 @@ public class Lightning extends JavaPlugin implements Listener {
         
         getLogger().info("Stopping server...");
         
-        if (server != null) server.stop(0);
+        if (server != null)
+			try {
+				server.stop();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 
         getLogger().info("Finished Disabling Lightning");
     }
