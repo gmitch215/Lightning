@@ -3,6 +3,7 @@ package me.gamercoder215.lightning;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InaccessibleObjectException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
@@ -12,8 +13,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-final class ClassInfo {
+import com.google.gson.Gson;
 
+final class ClassInfo {
+	
+	private static final Gson gson = new Gson();
+	
     public final String name;
     public final String full_name;
     public final MethodInfo[] methods;
@@ -39,7 +44,15 @@ final class ClassInfo {
         this.type = getType(clazz);
 
         List<MethodInfo> methods = new ArrayList<>();
-        for (Method m : clazz.getDeclaredMethods()) methods.add(new MethodInfo(m));
+        for (Method m : clazz.getDeclaredMethods()) {
+        	try {
+        		m.setAccessible(true);
+        		gson.toJson(new MethodInfo(m));
+        		methods.add(new MethodInfo(m));
+        	} catch (InaccessibleObjectException e) {
+        		continue;
+        	}
+        };
 
         List<TypeInfo> typeParams = new ArrayList<>();
         for (TypeVariable<?> type : clazz.getTypeParameters()) typeParams.add(new TypeInfo(type));
@@ -66,11 +79,27 @@ final class ClassInfo {
         this.annotations = annotations.toArray(new AnnotationInfo[0]);
 
         List<FieldInfo> fields = new ArrayList<>();
-        for (Field f : clazz.getDeclaredFields()) fields.add(new FieldInfo(f));
+        for (Field f : clazz.getDeclaredFields()) {
+        	try {
+        		f.setAccessible(true);
+        		gson.toJson(new FieldInfo(f));
+        		fields.add(new FieldInfo(f));
+        	} catch (InaccessibleObjectException e) {
+        		continue;
+        	}
+        }
         this.fields = fields.toArray(new FieldInfo[0]);
 
         List<ConstructorInfo> constructors = new ArrayList<>();
-        for (Constructor<?> c : clazz.getDeclaredConstructors()) constructors.add(new ConstructorInfo(c));
+        for (Constructor<?> c : clazz.getDeclaredConstructors()) {
+        	try {
+        		c.setAccessible(true);
+        		gson.toJson(new ConstructorInfo(c));
+        		constructors.add(new ConstructorInfo(c));
+        	} catch (InaccessibleObjectException e) {
+        		continue;
+        	}
+        }
         this.constructors = constructors.toArray(new ConstructorInfo[0]);
     }
 
@@ -146,11 +175,27 @@ final class ClassInfo {
             this.type = a.annotationType().getName();
             
             List<FieldInfo> fields = new ArrayList<>();
-            for (Field f : a.annotationType().getDeclaredFields()) fields.add(new FieldInfo(f));
+            for (Field f : a.annotationType().getDeclaredFields()) {
+            	try {
+            		f.setAccessible(true);
+            		gson.toJson(new FieldInfo(f));
+            		fields.add(new FieldInfo(f));
+            	} catch (InaccessibleObjectException e) {
+            		continue;
+            	}
+            }
             this.fields = fields.toArray(new FieldInfo[0]);
 
             List<MethodInfo> methods = new ArrayList<>();
-            for (Method m : a.annotationType().getDeclaredMethods()) methods.add(new MethodInfo(m));
+            for (Method m : a.annotationType().getDeclaredMethods()) {
+            	try {
+            		m.setAccessible(true);
+            		gson.toJson(new MethodInfo(m));
+            		methods.add(new MethodInfo(m));
+            	} catch (InaccessibleObjectException e) {
+            		continue;
+            	}
+            }
             this.methods = methods.toArray(new MethodInfo[0]);
         }
 
