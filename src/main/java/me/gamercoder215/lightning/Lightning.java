@@ -19,9 +19,6 @@ import java.util.function.Function;
 
 import javax.annotation.Nonnull;
 
-import com.google.gson.Gson;
-import com.sun.net.httpserver.HttpServer;
-
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -45,14 +42,15 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import revxrsal.commands.bukkit.BukkitCommandHandler;
+import com.google.gson.Gson;
+import com.sun.net.httpserver.HttpServer;
+
 public class Lightning extends JavaPlugin implements Listener {
 
     protected static Map<Class<?>, Function<String, ?>> registeredParse = new HashMap<>();
     protected static List<URI> eventListeners;
 
     private static HttpServer server;
-    private static BukkitCommandHandler handler;
     private static final Gson gson = new Gson();
 
     protected static final HttpClient client = HttpClient.newBuilder().version(Version.HTTP_2).build();
@@ -60,6 +58,8 @@ public class Lightning extends JavaPlugin implements Listener {
     public void onEvent(Event e) {
         try {
             for (URI uri : eventListeners) {
+            	if (uri == null) continue;
+            	
                 HttpRequest req = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(new EventInfo(e))))
                 .setHeader("User-Agent", "Java 17 Lightning HttpClient")
@@ -124,7 +124,7 @@ public class Lightning extends JavaPlugin implements Listener {
      * Removes an Event Listener from the registered URIs.
      * @param uri URI to remove
      */
-    public static void removeEventListener(URI uri) {
+    public static void removeEventListener(@Nonnull URI uri) {
         eventListeners.remove(uri);
     }
 
@@ -152,7 +152,7 @@ public class Lightning extends JavaPlugin implements Listener {
      * @throws IllegalArgumentException if url is invalid
      * @see {@link #addEventListener(URI)}
      */
-    public static void addEventListener(String url) throws IllegalArgumentException {
+    public static void addEventListener(@Nonnull String url) throws IllegalArgumentException {
         addEventListener(URI.create(url));
     }
 
@@ -162,7 +162,7 @@ public class Lightning extends JavaPlugin implements Listener {
      * When an event happens, a POST request will be sent to this URI with the event information. 
      * @param uri URI to add
      */
-    public static void addEventListener(URI uri) {
+    public static void addEventListener(@Nonnull URI uri) {
         eventListeners.add(uri);
     }
 
@@ -207,15 +207,10 @@ public class Lightning extends JavaPlugin implements Listener {
         }
     }
 
-    private void setupLamp() {
+    private void setupCommands() {
         getLogger().info("Loading Commands...");
-        handler = BukkitCommandHandler.create(this);
-
-        handler.registerValueResolver(URI.class, ctx -> URI.create(ctx.popForParameter()));
-
-        handler.register(new Commands(this));        
-
-        handler.registerBrigadier();
+        
+        new Commands(this);
     }
 
     private void registerBaseMethods() {
@@ -416,11 +411,18 @@ public class Lightning extends JavaPlugin implements Listener {
     }
 
     private void startServer() {
+    	if (Lightning.isOnline()) {
+    		getLogger().severe("Port in use, disabling");
+    		Bukkit.getPluginManager().disablePlugin(this);
+    		return;
+    	}
+    	
         try {
-            int port = getConfig().isString("port") ? Bukkit.getPort() : getConfig().getInt("port");
-
+            int port = getConfig().getInt("port");
+            
             server = HttpServer.create(new InetSocketAddress("localhost", port), 0);
-            server.createContext("/", new HTTPHandler(this));   
+            
+            server.createContext("/", new HTTPHandler(this));
 
             server.start();
         } catch (IOException e) {
@@ -432,7 +434,7 @@ public class Lightning extends JavaPlugin implements Listener {
      * Get the HTTP Server that is hosting the server.
      * @return HttpServer object
      */
-    public static HttpServer getHTTPServer() {
+    public static HttpServer getWebServer() {
         return server;
     }
 
@@ -471,7 +473,7 @@ public class Lightning extends JavaPlugin implements Listener {
     public void onEnable() {
         saveDefaultConfig();
         loadConfiguration();
-        setupLamp();
+        setupCommands();
         registerBaseMethods();
         startServer();
 
@@ -494,6 +496,10 @@ public class Lightning extends JavaPlugin implements Listener {
         }
 
         config.set("listeners", listeners);
+        
+        getLogger().info("Stopping server...");
+        
+        if (server != null) server.stop(0);
 
         getLogger().info("Finished Disabling Lightning");
     }
