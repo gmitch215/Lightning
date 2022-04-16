@@ -15,6 +15,10 @@ port: 30335
 headers:
   Authorization: NONE
 
+# A key as a parameter inside of the URL.
+# If a key is set, it will be required in the URL to have "key={KEY}" in order for it to work.
+# It is recommended to set this as some kind of unique password.
+key: NONE
 
 listeners:
   -

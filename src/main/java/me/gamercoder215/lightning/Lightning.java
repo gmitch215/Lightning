@@ -107,6 +107,7 @@ public class Lightning extends JavaPlugin implements Listener {
         public void doGet(HttpServletRequest req, HttpServletResponse res) throws IOException, ServletException {
             res.setContentType("application/json");
             
+            Map<String, String> params = queryToMap(req.getQueryString());
             Map<String, String> headers = new HashMap<>();
             
             Lightning plugin = JavaPlugin.getPlugin(Lightning.class);
@@ -117,7 +118,7 @@ public class Lightning extends JavaPlugin implements Listener {
                 
                 headers.put(entry.getKey(), value);
             }
-
+            
             boolean authorized = true;
 
             for (String key : headers.keySet()) {
@@ -126,6 +127,15 @@ public class Lightning extends JavaPlugin implements Listener {
             		break;
             	}
             }
+            
+            boolean hasKey = !(plugin.getConfig().getString("key").equals("NONE"));
+            
+            if (hasKey) {
+            	if (!(params.containsKey("key")) || !params.get("key").equals(plugin.getConfig().getString("key"))) {
+            		authorized = false;
+            	}
+            }
+            
 
             if (!authorized) {
             	res.setStatus(403);
@@ -135,7 +145,6 @@ public class Lightning extends JavaPlugin implements Listener {
             }
             
             try {
-                Map<String, String> params = queryToMap(req.getQueryString());
                 String path = req.getRequestURI();
 
                 if (path.equals("/")) {
@@ -772,7 +781,10 @@ public class Lightning extends JavaPlugin implements Listener {
         if (!(config.isList("listeners"))) {
             config.set("listeners", new ArrayList<String>());
         }
-
+        
+        if (!(config.isString("key"))) {
+        	config.set("key", "NONE");
+        }
 
         if (!(config.isConfigurationSection("headers"))) {
             config.createSection("headers");
