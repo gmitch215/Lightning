@@ -9,6 +9,7 @@
 </details>
 
 ## Usage
+Please read the [wiki page](https://github.com/GamerCoder215/Lightning/wiki) to learn more about how to use Lightning.
 ### Lightning Plugin
 To use the plugin, download it at our spigot page.
 
