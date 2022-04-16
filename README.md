@@ -29,9 +29,9 @@ To use the plugin, download it at our spigot page.
 ```
 #### Gradle
 ```gradle
-		repositories {
-			maven { url 'https://jitpack.io' }
-		}
+	repositories {
+		maven { url 'https://jitpack.io' }
+	}
 	dependencies {
 	        implementation 'com.github.GamerCoder215:Lightning:master-SNAPSHOT'
 	}
