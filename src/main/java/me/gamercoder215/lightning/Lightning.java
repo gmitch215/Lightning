@@ -470,7 +470,7 @@ public class Lightning extends JavaPlugin implements Listener {
      * Adds this URL as an event listener.
      * @param url URL to add
      * @throws IllegalArgumentException if url is invalid
-     * @see {@link #addEventListener(URI)}
+     * @see #addEventListener(URI)
      */
     public static void addEventListener(@Nonnull String url) throws IllegalArgumentException {
         addEventListener(URI.create(url));

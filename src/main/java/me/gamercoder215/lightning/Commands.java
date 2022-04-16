@@ -11,7 +11,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.eclipse.jetty.server.Server;
 
-public class Commands implements CommandExecutor {
+class Commands implements CommandExecutor {
 
     protected Lightning plugin;
 
