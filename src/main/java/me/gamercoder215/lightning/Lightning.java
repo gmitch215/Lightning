@@ -581,7 +581,7 @@ public class Lightning extends JavaPlugin implements Listener {
 
             return arr;
         });
-        registerParameter(char[].class, s -> { return s.toCharArray(); });
+        registerParameter(char[].class, s -> { return s.replace("%2B", "").toCharArray(); });
         registerParameter(double[].class, s -> {
             double[] arr = new double[s.split("%20").length];
 
@@ -603,10 +603,10 @@ public class Lightning extends JavaPlugin implements Listener {
         
 
         registerParameter(String.class, s -> {
-        	String newS = s.replace("%26", "&");
+        	String newS = s.replace("%26", "&").replace("%20", " ");
         	return ChatColor.translateAlternateColorCodes('&', newS);
         });
-        registerParameter(String[].class, s -> { return s.split("%20"); });
+        registerParameter(String[].class, s -> { return s.split("%2B"); });
         registerParameter(Class.class, s -> { 
             try {
                 return Class.forName(s);
